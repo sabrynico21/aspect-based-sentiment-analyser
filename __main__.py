@@ -4,10 +4,10 @@ import torch.nn as nn
 import torch.optim as optim
 from transformers import BertTokenizer
 from torch.utils.data import DataLoader
-from utils import read_json_file, calculate_class_weights
-from entities import TextWithLabelsContainer
-from constants import aspect_mapping, opinion_mapping
-from model import AspectClassificationModel
+from .utils import read_json_file, calculate_class_weights
+from .entities import TextWithLabelsContainer
+from .constants import aspect_mapping, opinion_mapping
+from .model import AspectClassificationModel
 
 
 if __name__ == "__main__":
@@ -30,24 +30,29 @@ if __name__ == "__main__":
             dataset[set].set_attention_mask(sentences_attention_mask[i])
             dataset[set].compute_one_hot_format(i, num_aspects, num_opinions)
 
-    model = AspectClassificationModel(bert_model_name='bert-base-uncased', num_aspects=num_aspects)
+    model = AspectClassificationModel(bert_model_name='bert-base-uncased', num_aspects=num_aspects, num_opinions=num_opinions)
     for param in model.bert.parameters():
         param.requires_grad = False
     
     train_data = [(dataset["train"].get_tokens(pos),
                   dataset["train"].get_attention_mask(pos),
-                  dataset["train"].get_aspect_label(pos)) for pos in range(dataset["train"].len)]
+                  dataset["train"].get_aspect_label(pos),
+                  dataset["train"].get_opinion_label(pos)) for pos in range(dataset["train"].len)]
         
     val_data = [(dataset["val"].get_tokens(pos),
                   dataset["val"].get_attention_mask(pos),
-                  dataset["val"].get_aspect_label(pos)) for pos in range(dataset["val"].len)]
+                  dataset["val"].get_aspect_label(pos),
+                  dataset["val"].get_opinion_label(pos)) for pos in range(dataset["val"].len)]
         
     train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=32, shuffle=True)
     
-    class_weights = calculate_class_weights([torch.argmax(dataset["train"].get_aspect_label(pos), dim=1).long() for pos in range(dataset["train"].len)])
-    criterion = nn.CrossEntropyLoss(weight=class_weights)  # CrossEntropyLoss is suitable for multi-class classification
-    optimizer = optim.Adam(model.fc.parameters(), lr=0.01)
+    aspect_weights = calculate_class_weights([torch.argmax(dataset["train"].get_aspect_label(pos), dim=1).long() for pos in range(dataset["train"].len)])
+    opinion_weights = calculate_class_weights([torch.argmax(dataset["train"].get_opinion_label(pos), dim=1).long() for pos in range(dataset["train"].len)])
+    criterion_aspect = nn.CrossEntropyLoss(weight=aspect_weights)
+    criterion_opinion = nn.CrossEntropyLoss(weight=opinion_weights)
+    optimizer_aspect = optim.Adam(model.fc1.parameters(), lr=0.001)
+    optimizer_opinion = optim.Adam(model.fc2.parameters(), lr=0.001)
     num_epochs = 10
     logging.basicConfig(filename='output.log', level=logging.INFO)
-    model.train_and_save(num_epochs, train_loader, val_loader, criterion, optimizer, num_aspects, logging)
+    model.train_and_save(num_epochs, train_loader, val_loader, criterion_aspect, criterion_opinion, optimizer_aspect, optimizer_opinion, num_aspects, num_opinions, logging)
