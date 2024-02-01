@@ -1,6 +1,6 @@
 import torch
-from constants import aspect_mapping, opinion_mapping
-from utils import compare_values
+from .constants import aspect_mapping, opinion_mapping
+from .utils import compare_values
 
 class Token:
     def __init__(self, value=None, text=None, position=None):
