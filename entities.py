@@ -1,6 +1,12 @@
 import torch
 from .constants import aspect_mapping, opinion_mapping
-from .utils import compare_values
+#from .utils import compare_values
+
+def compare_values(target, tokens):
+    for token in tokens:   
+        if target.value == token:
+            return "True"
+    return "False"
 
 class Token:
     def __init__(self, value=None, text=None, position=None):
@@ -21,13 +27,23 @@ class Token:
         return self._position
     
 class Label:
-    def __init__(self, aspect_pos=None, opinion_pos=None, polarity=None, category1=None, category2=None):
+    def __init__(self, aspect_text=None, opinion_text=None, aspect_pos=None, opinion_pos=None, polarity=None, category1=None, category2=None):
+        self._aspect_text = aspect_text
+        self._opinion_text = opinion_text 
         self._aspect_pos = aspect_pos
         self._opinion_pos = opinion_pos 
         self._polarity = polarity 
         self._category_aspect = category1
         self._category_opinion = category2
 
+    @property
+    def aspect_text(self):
+        return self._aspect_text
+    
+    @property
+    def opinion_text(self):
+        return self._opinion_text
+    
     @property
     def aspect_pos(self):
         return self._aspect_pos
@@ -78,8 +94,8 @@ class TextWithLabels:
         return self._text_labels != []
 
     def compute_one_hot_format(self, num_aspects, num_opinions):
-        text_aspect = [aspect_mapping["VOID"]] * len(self.text_tokens)
-        text_opinion = [opinion_mapping["VOID"]] * len(self.text_tokens)
+        text_aspect = [aspect_mapping["NULL"]] * len(self.text_tokens)
+        text_opinion = [opinion_mapping["NULL"]] * len(self.text_tokens)
         for label in self.text_labels:
             for pos in label.aspect_pos:
                 text_aspect[pos] = label.category_aspect
@@ -110,7 +126,7 @@ class TextWithLabelsContainer:
     def get_tokens(self, pos):
          return torch.tensor([token.value for token in self._instances[pos].text_tokens], dtype=torch.long)
     def set_text_tokens(self, sentence, pos, tokenizer):
-        tokens = [Token(text = tokenizer.decode(token), 
+        tokens = [Token(text = tokenizer.decode(token, skip_special_tokens=True), 
                         value=token.item(),
                         position=position) 
                         for position, token in enumerate(sentence)]
@@ -119,7 +135,9 @@ class TextWithLabelsContainer:
     def set_text_labels(self, labels, pos, tokenizer):
         for entry in labels:
             aspect_pos = []
+            aspect_value = []
             opinion_pos = []
+            opinion_value =[]
             words_aspect = entry["aspect"]
             words_opinion = entry["opinion"]
             sentiment = entry["polarity"]
@@ -131,9 +149,17 @@ class TextWithLabelsContainer:
             for token in self._instances[pos].text_tokens:
                 if compare_values(token, tokens_aspect) == "True":
                     aspect_pos.append(token.position)
+                    aspect_value.append(token.value)
                 if compare_values(token, tokens_opinion) == "True":
                     opinion_pos.append(token.position)
-            self._instances[pos].text_labels = Label(aspect_pos = aspect_pos, opinion_pos = opinion_pos, polarity = sentiment, category1=aspect_mapping[category[0]], category2=opinion_mapping[category[1]])
+                    opinion_value.append(token.value)
+            self._instances[pos].text_labels = Label(aspect_text = (tokenizer.decode(aspect_value) if aspect_value != [] else "NULL"), 
+                                                     opinion_text = (tokenizer.decode(opinion_value) if opinion_value != [] else "NULL"), 
+                                                     aspect_pos = aspect_pos, 
+                                                     opinion_pos = opinion_pos, 
+                                                     polarity = sentiment, 
+                                                     category1=aspect_mapping[category[0]], 
+                                                     category2=opinion_mapping[category[1]])
 
     def compute_one_hot_format(self, pos, num_aspects, num_opinions):
         aspect, opinion = self._instances[pos].compute_one_hot_format(num_aspects, num_opinions)

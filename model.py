@@ -26,8 +26,8 @@ class AspectClassificationModel(nn.Module):
         return aspect_probs, opinion_probs
     
     def train_and_save(self, num_epochs, train_loader, val_loader, criterion1, criterion2, optimizer1, optimizer2, num_aspects, num_opinions, logging):
-        #model_path = 'LSTM_epoch_{}.pth'.format(5)  # Adjust the epoch number accordingly
-        #model.load_state_dict(torch.load(model_path))
+        model_path = 'NLP_epoch_{}.pth'.format(3)  # Adjust the epoch number accordingly
+        self.load_state_dict(torch.load(model_path))
         loader = {
         'train' : train_loader,
         'val' : val_loader
@@ -75,23 +75,28 @@ class AspectClassificationModel(nn.Module):
 
                         labels1 = torch.argmax(labels1, dim=2).long()
                         labels2 = torch.argmax(labels2, dim=2).long()
+                        
                         outputs1=outputs1.permute(0, 2, 1)
                         outputs2=outputs2.permute(0, 2, 1)
-
+                        #print(outputs1)
+                        
                         loss1 = criterion1(outputs1, labels1)
                         loss2 = criterion2(outputs2, labels2)
 
                         if mode == 'train':
+                            optimizer1.zero_grad()
                             loss1.backward()
                             optimizer1.step()
-                            optimizer1.zero_grad()
-
+                            #optimizer1.zero_grad()
+                            optimizer2.zero_grad()
                             loss2.backward()
                             optimizer2.step()
-                            optimizer2.zero_grad()
+                            
 
                         _, predicted1 = torch.max(outputs1, 1)
                         _, predicted2 = torch.max(outputs2, 1)
+                        #print(predicted1)
+                        #print(labels1)
                         mask = (attention_mask != 0)
                         
                         metrics['loss1'].add(loss1.item(),inputs.shape[0])
@@ -102,9 +107,10 @@ class AspectClassificationModel(nn.Module):
                         metrics['precision2'](predicted2[mask], labels2[mask])
                         metrics['recall1'](predicted1[mask], labels1[mask])
                         metrics['recall2'](predicted2[mask], labels2[mask])
-                        print(epoch)
+                        #print(epoch)
+                        print(loss1.item(), loss2.item())
                 logging.info(f'{mode.capitalize()} Mode - '
-                            f'Epoch [{epoch + 1}/{num_epochs}], '
+                            f'Epoch [{epoch + 21}/{num_epochs + 10}], '
                             f'Loss Task 1: {metrics["loss1"].compute():.4f}, '
                             f'Loss Task 2: {metrics["loss2"].compute():.4f}, '
                             f'Accuracy Task 1: {metrics["accuracy1"].compute():.4f}, '
@@ -115,10 +121,58 @@ class AspectClassificationModel(nn.Module):
                             f'Recall Task 2: {metrics["recall2"].compute():.4f}, ')     
                 print(
                     f'{mode.capitalize()} Mode - '
-                    f'Epoch [{epoch + 1}/{num_epochs}], '
+                    f'Epoch [{epoch + 21}/{num_epochs + 10}], '
                     f'Loss: {metrics["loss1"].compute():.4f}, '
                     f'Accuracy: {metrics["accuracy1"].compute():.4f}, '
                     f'Precision: {metrics["precision1"].compute():.4f}, '
                     f'Recall: {metrics["recall1"].compute():.4f}, '
                 )
             torch.save(self.state_dict(), f'NLP_epoch_{epoch+1}.pth')
+
+    def predict(self, num_aspects, num_opinions, criterion_aspects, criterion_opinions, test_data):
+        predicted_dict = { "aspect": torch.tensor([]),
+                      "opinion": torch.tensor([])}
+        metrics_dict = {
+            'aspect': {
+                'accuracy': torchmetrics.Accuracy(task='multiclass', num_classes=num_aspects),
+                'precision': torchmetrics.Precision(num_classes=num_aspects, average='macro', task='multiclass'),
+                'recall': torchmetrics.Recall(num_classes=num_aspects, average='macro', task='multiclass')
+            },
+            'opinion': {
+                'accuracy': torchmetrics.Accuracy(task='multiclass', num_classes=num_opinions),
+                'precision': torchmetrics.Precision(num_classes=num_opinions, average='macro', task='multiclass'),
+                'recall': torchmetrics.Recall(num_classes=num_opinions, average='macro', task='multiclass')
+             }
+        }
+        loss = {}
+        criterion = {"aspect" : criterion_aspects,
+                     "opinion" : criterion_opinions}
+        model_path = 'NLP_epoch_{}.pth'.format(3)  
+        self.load_state_dict(torch.load(model_path))
+        self.eval()
+        with torch.no_grad():  
+            for inputs, attention_mask, labels1, labels2 in test_data:
+                outputs1, outputs2 = self(inputs, attention_mask)
+
+                for type in ["aspect","opinion"]:
+                    metrics = metrics_dict[type]
+                    labels = torch.argmax(labels1 if type=="aspect" else labels2, dim=2).long()
+                    outputs = (outputs1 if type=="aspect" else outputs2).permute(0, 2, 1)
+                    loss[type] = criterion[type](outputs, labels)
+                    _ , predicted = torch.max(outputs, 1)
+                   
+                    predicted_dict[type] = torch.cat([predicted_dict[type], predicted], dim=0)
+                    mask = (attention_mask != 0)
+
+                    metrics["accuracy"](predicted[mask], labels[mask])
+                    metrics["precision"](predicted[mask], labels[mask])
+                    metrics["recall"](predicted[mask], labels[mask])
+                            
+                    print( f'Loss: {loss[type]:.4f}, '
+                        f'Accuracy: {metrics["accuracy"].compute():.4f}, '
+                        f'Precision: {metrics["precision"].compute():.4f}, '
+                        f'Recall: {metrics["recall"].compute():.4f}, ', '\n'
+                        )
+                break
+        return predicted_dict
+            
