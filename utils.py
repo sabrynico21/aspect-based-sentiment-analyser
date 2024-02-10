@@ -16,16 +16,17 @@ def calculate_iou_score(ground_truth, predicted):
     iou_score = intersection / union if union != 0 else 0
     return iou_score
 
-def find_index_of_opinion(gt_label,pred_labels):
+def find_index_of_opinion(gt_label, pred_labels, list_of_index):
     max_iou_score = 0
     index = "NULL"
     for num, pred_label in enumerate(pred_labels):
-        opinion_iou_score = calculate_iou_score(gt_label.opinion_text, pred_label.opinion_text)
-        aspect_iou_score = calculate_iou_score(gt_label.aspect_text, pred_label.aspect_text)
-        iou_score = opinion_iou_score + aspect_iou_score
-        if iou_score > max_iou_score:
-            max_iou_score = iou_score
-            index = num
+        if num not in list_of_index: 
+            opinion_iou_score = calculate_iou_score(gt_label.opinion_text, pred_label.opinion_text)
+            aspect_iou_score = calculate_iou_score(gt_label.aspect_text, pred_label.aspect_text)
+            iou_score = opinion_iou_score + aspect_iou_score
+            if iou_score > max_iou_score:
+                max_iou_score = iou_score
+                index = num
     return index
 
 def get_metrics(gt_label, pred_labels, index):
@@ -53,38 +54,48 @@ def get_performances(ground_truth, predicted):
     mean_accuracy = dict()
     mean_iou_score["text_aspect"] = 0
     mean_iou_score["text_opinion"] = 0
-    mean_iou_score["polarity"] = 0
+    mean_accuracy["polarity"] = 0
     mean_accuracy["category_aspect"] = 0
     mean_accuracy["category_opinion"] = 0
-
-    keys = ["text_aspect", "text_opinion","polarity","category_aspect", "category_opinion"]
+    mean_recall = AverageValueMeter()
+    mean_precision = AverageValueMeter()
     for gt_labels, pred_labels in zip(ground_truth, predicted):
         iou_score["text_aspect"] = 0
         iou_score["text_opinion"] = 0
         accuracy["polarity"] = 0
         accuracy["category_aspect"] = 0
         accuracy["category_opinion"] = 0
+        list_of_index = []
+        recall = 0
+        precision = 0 
         for gt_label in gt_labels:
-            index = find_index_of_opinion(gt_label,pred_labels) 
+            index = find_index_of_opinion(gt_label,pred_labels, list_of_index) 
+            list_of_index.append(index)
             metrics = get_metrics(gt_label, pred_labels, index)
+
             iou_score["text_aspect"] += metrics[0]["text_aspect"]
             iou_score["text_opinion"] += metrics[0]["text_opinion"]
             accuracy["polarity"]+= metrics[1]["polarity"]
             accuracy["category_aspect"]+=metrics[1]["category_aspect"]
             accuracy["category_opinion"]+=metrics[1]["category_opinion"]
-        #ho iterato su tutte le label di una mia sentenza 
+        precision = (len(list_of_index) - list_of_index.count("NULL")) / len (pred_labels)
+        recall = (len(list_of_index) - list_of_index.count("NULL")) / len(list_of_index)
+        mean_recall.add(recall, 1)
+        mean_precision.add(precision,1)
+         
         mean_iou_score["text_aspect"] += iou_score["text_aspect"] / len(gt_labels)
         mean_iou_score["text_opinion"] += iou_score["text_opinion"] / len(gt_labels)
-        mean_iou_score["polarity"] += accuracy["polarity"] / len(gt_labels)
+        mean_accuracy["polarity"] += accuracy["polarity"] / len(gt_labels)
         mean_accuracy["category_aspect"] += accuracy["category_aspect"] / len(gt_labels)
         mean_accuracy["category_opinion"] += accuracy["category_opinion"] / len(gt_labels)
-
-            
-    print(mean_iou_score["text_aspect"] / len(predicted))
-    print(mean_iou_score["text_opinion"] / len(predicted))
-    print(mean_iou_score["polarity"] / len(predicted))
-    print(mean_accuracy["category_aspect"] / len(predicted))
-    print(mean_accuracy["category_opinion"] / len(predicted))
+   
+    print("Recall: " , mean_recall.compute())
+    print("IoU score - Aspect: ", mean_iou_score["text_aspect"] / len(predicted))
+    print("IoU score - Opinion: ", mean_iou_score["text_opinion"] / len(predicted))
+    print("Accuracy - Polarity: ", mean_accuracy["polarity"] / len(predicted))
+    print("Accuracy - Aspect category: ", mean_accuracy["category_aspect"] / len(predicted))
+    print("Accuracy - Opinion category: ", mean_accuracy["category_opinion"] / len(predicted))
+    print("Precision: ", mean_precision.compute())
 
 def remove_stopwords(doc, type ):
     if type == "aspect":

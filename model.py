@@ -5,10 +5,10 @@ import torch.nn.functional as F
 from transformers import BertModel
 from .utils import AverageValueMeter
 
-class AspectClassificationModel(nn.Module):
+class ClassificationModel(nn.Module):
 
     def __init__(self, bert_model_name, num_aspects, num_opinions):
-        super(AspectClassificationModel, self).__init__()
+        super(ClassificationModel, self).__init__()
         self.bert = BertModel.from_pretrained(bert_model_name)
         bert_output_dim = self.bert.config.hidden_size
         self.fc1 = nn.Linear(bert_output_dim, num_aspects)
@@ -18,15 +18,15 @@ class AspectClassificationModel(nn.Module):
         outputs = self.bert(input_ids, attention_mask=attention_mask)
         token_embeddings = outputs.last_hidden_state
         aspect_scores = self.fc1(token_embeddings)
-        aspect_probs = F.softmax(aspect_scores, dim=-1)  # Use softmax for probability distribution
+        aspect_probs = F.softmax(aspect_scores, dim=-1)  
 
         opinion_scores = self.fc2(token_embeddings)
-        opinion_probs = F.softmax(opinion_scores, dim=-1)  # Use softmax for probability distribution
+        opinion_probs = F.softmax(opinion_scores, dim=-1) 
 
         return aspect_probs, opinion_probs
     
     def train_and_save(self, num_epochs, train_loader, val_loader, criterion1, criterion2, optimizer1, optimizer2, num_aspects, num_opinions, logging):
-        model_path = 'NLP_epoch_{}.pth'.format(3)  # Adjust the epoch number accordingly
+        model_path = 'NLP_epoch_{}.pth'.format(3)  
         self.load_state_dict(torch.load(model_path))
         loader = {
         'train' : train_loader,
@@ -129,7 +129,7 @@ class AspectClassificationModel(nn.Module):
                 )
             torch.save(self.state_dict(), f'NLP_epoch_{epoch+1}.pth')
 
-    def predict(self, num_aspects, num_opinions, criterion_aspects, criterion_opinions, test_data):
+    def predict(self, num_aspects, num_opinions, criterion_aspects, criterion_opinions, test_data, model_path):
         predicted_dict = { "aspect": torch.tensor([]),
                       "opinion": torch.tensor([])}
         metrics_dict = {
@@ -147,7 +147,7 @@ class AspectClassificationModel(nn.Module):
         loss = {}
         criterion = {"aspect" : criterion_aspects,
                      "opinion" : criterion_opinions}
-        model_path = 'NLP_epoch_{}.pth'.format(3)  
+        #model_path = 'NLP_epoch_{}.pth'.format(3)  
         self.load_state_dict(torch.load(model_path))
         self.eval()
         with torch.no_grad():  
@@ -173,6 +173,5 @@ class AspectClassificationModel(nn.Module):
                         f'Precision: {metrics["precision"].compute():.4f}, '
                         f'Recall: {metrics["recall"].compute():.4f}, ', '\n'
                         )
-                break
         return predicted_dict
             
